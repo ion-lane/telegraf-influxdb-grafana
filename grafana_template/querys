@@ -1,0 +1,40 @@
+from(bucket: "netflow")
+  |> range(start: -15m)
+  |> filter(fn: (r) => r["_measurement"] == "netflow")
+  |> filter(fn: (r) => r["_field"] == "in_bytes")
+  |> aggregateWindow(every: 1m, fn: sum, createEmpty: false)
+  |> yield(name: "in_bytes_per_minute")
+
+---
+
+srcData = from(bucket: "netflow")
+  |> range(start: -15m)
+  |> filter(fn: (r) => r["_measurement"] == "netflow")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> group(columns: ["src"])
+  |> sum(column: "in_bytes")
+  |> map(fn: (r) => ({ r with group: r.src }))
+  |> keep(columns: ["group", "in_bytes", "type"])
+
+dstData = from(bucket: "netflow")
+  |> range(start: -15m)
+  |> filter(fn: (r) => r["_measurement"] == "netflow")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> group(columns: ["dst"])
+  |> sum(column: "in_bytes")
+  |> map(fn: (r) => ({ r with group: r.dst }))
+  |> keep(columns: ["group", "in_bytes", "type"])
+
+union(tables: [srcData, dstData])
+  |> sort(columns: ["in_bytes"], desc: true)
+  |> limit(n: 20)
+
+---
+
+from(bucket: "netflow")
+  |> range(start: -15m)
+  |> filter(fn: (r) => r["_measurement"] == "netflow")
+  |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> keep(columns: ["_time", "src", "src_port", "dst", "dst_port", "in_bytes", "protocol"])
+  |> sort(columns: ["in_bytes"], desc: true)
+  |> limit(n: 10)
